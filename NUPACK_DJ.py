@@ -62,7 +62,7 @@ with tab1:
 # 标签页 2：NUPACK 多链分析
 # ==========================================
 with tab2:
-    st.subheader("模式二：多链试管平衡态模拟")
+    st.subheader("模式二：多链杂交模拟")
     if not nupack_available:
         st.warning("⚠️ 检测到当前环境未安装 NUPACK。部署到云端后将自动激活。")
     
@@ -76,7 +76,7 @@ with tab2:
     with col_p3:
         max_size = st.number_input("最大尺寸 (聚体):", min_value=1, max_value=4, value=2)
 
-    st.markdown("#### 反应组分与浓度")
+    st.markdown("####  反应组分与浓度")
     default_data = pd.DataFrame({
         "名称": ["链A", "链B"],
         "序列": ["AGUCUAGGAUUCGGCGUG", "CACGCCGAAUCCUAGACU"],
@@ -92,10 +92,21 @@ with tab2:
                 try:
                     my_model = Model(material=n_mat, celsius=n_temp, sodium=n_na, magnesium=n_mg)
                     strands_dict = {}
+                    
+                    # 🌟 核心修复 1：创建一个我们自己的“备忘录字典”
+                    seq_map = {} 
+                    
                     for _, row in edited_df.iterrows():
-                        s_name, s_seq = str(row["名称"]), str(row["序列"]).upper().replace(" ", "")
-                        if s_seq:
-                            strands_dict[Strand(s_seq, name=s_name)] = float(row["浓度 (µM)"]) * 1e-6
+                        s_name, s_seq = str(row["名称"]).strip(), str(row["序列"]).upper().replace(" ", "")
+                        if s_seq and s_name:
+                            strand_obj = Strand(s_seq, name=s_name)
+                            strands_dict[strand_obj] = float(row["浓度 (µM)"]) * 1e-6
+                            # 把名字和序列存进我们的备忘录
+                            seq_map[s_name] = s_seq 
+
+                    if not strands_dict:
+                        st.warning("请输入有效序列！")
+                        st.stop()
 
                     my_tube = Tube(strands=strands_dict, complexes=SetSpec(max_size=max_size), name="Tube1")
                     res = tube_analysis(tubes=[my_tube], model=my_model)[my_tube]
@@ -112,7 +123,7 @@ with tab2:
                                 "浓度 (µM)": conc_uM,
                                 "MFE": mfe_res.energy,
                                 "结构": str(mfe_res.structure),
-                                "obj": complex_item, # 存储对象用于后续取序列
+                                "obj": complex_item, # 存储对象用于后续取名字
                                 "struct_v": str(mfe_res.structure).replace("+", "&") # 转换符号
                             })
                     
@@ -121,20 +132,24 @@ with tab2:
                     st.bar_chart(df_res.set_index("复合物")["浓度 (µM)"])
                     st.dataframe(df_res[["复合物", "浓度 (µM)", "MFE", "结构"]], use_container_width=True)
 
-                    # 🌟 重点：为浓度最高的复合物生成结构图
+                    # 🌟 重点绘图区
                     if not df_res.empty:
                         top_complex = df_res.iloc[0]
                         st.subheader(f"主产物结构图: {top_complex['复合物']}")
                         
-                        # 合并序列用于 ViennaRNA 绘图，链之间用 & 分割
-                        combined_seq = "&".join([s.sequence for s in top_complex["obj"].strands])
+                        # 🌟 核心修复 2：用链的名字 s.name，去我们的备忘录 seq_map 里把真正的序列取出来！
+                        combined_seq = "&".join([seq_map[s.name] for s in top_complex["obj"].strands])
+                        
                         vienna_struct = top_complex["struct_v"]
                         
                         plot_file = "temp_multi.svg"
                         RNA.svg_rna_plot(combined_seq, vienna_struct, plot_file)
                         with open(plot_file, "r") as f:
                             st.components.v1.html(f"<div style='text-align:center;'>{f.read()}</div>", height=600)
-                        os.remove(plot_file)
+                        
+                        # 画完清理文件
+                        if os.path.exists(plot_file):
+                            os.remove(plot_file)
 
                 except Exception as e:
                     st.error(f"计算出错: {e}")
