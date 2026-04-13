@@ -1,25 +1,26 @@
 import streamlit as st
 import RNA
+import pandas as pd
 from Bio.SeqUtils import MeltingTemp as mt
 import streamlit.components.v1 as components
+import os
 
-# 🌟 尝试导入 NUPACK，如果是在本地 Windows 测试会报错，但在云端 Linux 会成功！
+# 🌟 尝试导入 NUPACK
 try:
     from nupack import *
     nupack_available = True
 except ImportError:
     nupack_available = False
 
-st.set_page_config(page_title="核酸分析平台", layout="wide")
+st.set_page_config(page_title="核酸多链分析平台", layout="wide")
 
 st.title("🧬 高级核酸序列分析与多链配对平台")
-st.markdown("集成 ViennaRNA 与 NUPACK 底层算法。")
+st.markdown("集成 ViennaRNA 与 NUPACK 算法，支持单链分析与多链杂交模拟。")
 
-# 使用标签页区分不同功能
-tab1, tab2 = st.tabs(["单链常规分析 (ViennaRNA)", "多链复杂杂交模拟 (NUPACK)"])
+tab1, tab2 = st.tabs(["单链常规分析 (ViennaRNA)", "多链杂交模拟 (NUPACK)"])
 
 # ==========================================
-# 标签页 1：单链分析 (你之前的代码)
+# 标签页 1：单链分析
 # ==========================================
 with tab1:
     st.subheader("模式一：单链二级结构与参数计算")
@@ -27,189 +28,113 @@ with tab1:
     
     if st.button("开始单链分析"):
         clean_seq = sequence_input.upper().replace(" ", "").replace("\n", "")
-        # ... 这里的代码就是上一节课的 GC含量、MFE、SVG 画图代码，你可以直接粘贴过来 ...   # ==========================================
-        
-        # (1) 计算 GC 含量
-        g_count = clean_seq.count('G')
-        c_count = clean_seq.count('C')
-        gc_content = (g_count + c_count) / len(clean_seq) * 100
-        
-        # (2) 计算 MFE 和 点号-括号结构
-        struct, mfe = RNA.fold(clean_seq)
-        
-        # (3) 计算 Tm 值
-        # 注意：这里调用了 RNA 专属的最近邻热力学参数表 (mt.RNA_NN1)
-        try:
-            tm_value = mt.Tm_NN(clean_seq, nn_table=mt.RNA_NN1)
-            tm_display = f"{tm_value:.2f} °C"
-        except Exception as e:
-            # 如果序列太短或有奇怪的字符，可能会报错，我们做个防护
-            tm_display = "无法计算 (序列过短或含非标准碱基)"
+        if clean_seq:
+            # 计算数据
+            g_count = clean_seq.count('G')
+            c_count = clean_seq.count('C')
+            gc_content = (g_count + c_count) / len(clean_seq) * 100
+            struct, mfe = RNA.fold(clean_seq)
             
-        # (4) 生成 SVG 二级结构图，先临时保存在电脑里
-        temp_svg_file = "temp_struct.svg"
-        RNA.svg_rna_plot(clean_seq, struct, temp_svg_file)
-        
-        # ==========================================
-        st.success("分析完成！")
+            try:
+                tm_value = mt.Tm_NN(clean_seq, nn_table=mt.RNA_NN1)
+                tm_display = f"{tm_value:.2f} °C"
+            except:
+                tm_display = "无法计算"
 
-        # 用三列并排显示三个核心数据
-        col_a, col_b, col_c = st.columns(3)
-        col_a.metric(label="GC 含量", value=f"{gc_content:.2f}%")
-        col_b.metric(label="最小自由能 (MFE)", value=f"{mfe:.2f} kcal/mol")
-        col_c.metric(label="预测 Tm 值", value=tm_display)
-        
-        # 显示序列结构（用 text_input 方便别人复制）
-        st.text_input("二级结构 (点号-括号表示法):", value=struct)
-        
-        # 读取并在网页上渲染那张 SVG 图片
-        st.subheader(" 预测二级结构图")
-        with open(temp_svg_file, "r") as f:
-            svg_code = f.read()
-        components.html(f"<div style='text-align: center;'>{svg_code}</div>", height=500)
-       
+            # 展示数据
+            st.success("分析完成！")
+            col_a, col_b, col_c = st.columns(3)
+            col_a.metric("GC 含量", f"{gc_content:.2f}%")
+            col_b.metric("最小自由能 (MFE)", f"{mfe:.2f} kcal/mol")
+            col_c.metric("预测 Tm 值", tm_display)
+            
+            st.text_input("二级结构 (点号-括号):", value=struct)
+            
+            # 绘图
+            temp_svg = "temp_single.svg"
+            RNA.svg_rna_plot(clean_seq, struct, temp_svg)
+            with open(temp_svg, "r") as f:
+                svg_code = f.read()
+            components.html(f"<div style='text-align: center;'>{svg_code}</div>", height=500)
+            os.remove(temp_svg)
 
 # ==========================================
-# 标签页 2：NUPACK 多链杂交分析 
-
+# 标签页 2：NUPACK 多链分析
+# ==========================================
 with tab2:
-    st.subheader("模式二：多链杂交分析 (NUPACK Tube Analysis)")
-    st.markdown("还原 NUPACK 官方网站的试管模拟功能。支持任意数量的核酸链、自定义浓度、以及盐离子浓度调节。")
-    
+    st.subheader("模式二：多链试管平衡态模拟")
     if not nupack_available:
-        st.warning("检测到当前环境未安装 NUPACK。部署到 Streamlit Cloud 后将自动激活。")
+        st.warning("⚠️ 检测到当前环境未安装 NUPACK。部署到云端后将自动激活。")
     
-    # --- 1. NUPACK 核心物理参数设置区 ---
-    st.markdown("#### 物理参数设置 (Physical Parameters)")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        n_material = st.selectbox("核酸类型 (Material):", ["RNA", "DNA"])
-        n_temp = st.number_input("温度 (Temperature °C):", value=37.0)
-    with col2:
-        # 盐离子浓度对核酸杂交极其重要，NUPACK 官网默认 Na+ 为 1.0M
-        n_na = st.number_input("钠离子 Na+ 浓度 (M):", value=1.0, step=0.1)
-        n_mg = st.number_input("镁离子 Mg++ 浓度 (M):", value=0.0, step=0.001, format="%.3f")
-    with col3:
-        # 允许的最大聚合物大小
-        max_size = st.number_input("最大复合物尺寸 (Max Complex Size):", min_value=1, max_value=5, value=2, help="例如设为2，则最多计算两条链结合的双链；设为3则计算到三聚体。数值越大计算越慢。")
+    col_p1, col_p2, col_p3 = st.columns(3)
+    with col_p1:
+        n_mat = st.selectbox("材质:", ["RNA", "DNA"])
+        n_temp = st.number_input("温度 (°C):", value=37.0)
+    with col_p2:
+        n_na = st.number_input("Na+ (M):", value=1.0)
+        n_mg = st.number_input("Mg++ (M):", value=0.0)
+    with col_p3:
+        max_size = st.number_input("最大尺寸 (聚体):", min_value=1, max_value=4, value=2)
 
-    # --- 2. 序列录入区 ---
-    st.markdown("#### 序列与初始浓度 (Strands & Initial Concentrations)")
-    st.info(" 你可以直接点击单元格修改序列，或者在表格底部添加/删除行。")
-    
-    import pandas as pd
-    
-    # 提供一个最基础的通用双链默认值
-    default_strands = pd.DataFrame({
-        "链名称 (Name)": ["Strand_A", "Strand_B"],
-        "序列 (Sequence)": ["AGUCUAGGAUUCGGCGUG", "CACGCCGAAUCCUAGACU"],
-        "初始浓度 (µM)": [1.0, 1.0] 
+    st.markdown("#### 反应组分与浓度")
+    default_data = pd.DataFrame({
+        "名称": ["链A", "链B"],
+        "序列": ["AGUCUAGGAUUCGGCGUG", "CACGCCGAAUCCUAGACU"],
+        "浓度 (µM)": [1.0, 1.0]
     })
+    edited_df = st.data_editor(default_data, num_rows="dynamic", use_container_width=True)
     
-    edited_df = st.data_editor(default_strands, num_rows="dynamic", use_container_width=True)
-    
-    # --- 3. 分析运行区 ---
-    if st.button("启动 NUPACK 平衡态分析"):
+    if st.button("启动 NUPACK 分析"):
         if not nupack_available:
-            st.error("本地环境无法运行 NUPACK,请部署至云端后重试。")
+            st.error("本地环境无法运行 NUPACK。")
         else:
-            with st.spinner("NUPACK 引擎正在计算配分函数与平衡态浓度，请稍候..."):
+            with st.spinner("计算中..."):
                 try:
-                    # 将界面上收集到的物理参数传给 NUPACK Model
-                    my_model = Model(
-                        material=n_material, 
-                        celsius=n_temp, 
-                        sodium=n_na,       # 引入钠离子
-                        magnesium=n_mg     # 引入镁离子
-                    )
+                    my_model = Model(material=n_mat, celsius=n_temp, sodium=n_na, magnesium=n_mg)
                     strands_dict = {}
+                    for _, row in edited_df.iterrows():
+                        s_name, s_seq = str(row["名称"]), str(row["序列"]).upper().replace(" ", "")
+                        if s_seq:
+                            strands_dict[Strand(s_seq, name=s_name)] = float(row["浓度 (µM)"]) * 1e-6
+
+                    my_tube = Tube(strands=strands_dict, complexes=SetSpec(max_size=max_size), name="Tube1")
+                    res = tube_analysis(tubes=[my_tube], model=my_model)[my_tube]
                     
-                    # 遍历表格获取用户输入
-                    for index, row in edited_df.iterrows():
-                        name = str(row["链名称 (Name)"]).strip()
-                        seq = str(row["序列 (Sequence)"]).upper().replace(" ", "")
-                        
-                        if seq and name:
-                            try:
-                                conc_uM = float(row["初始浓度 (µM)"])
-                                strand_obj = Strand(seq, name=name)
-                                # NUPACK 计算使用 M (摩尔/升)，这里将 µM 换算为 M
-                                strands_dict[strand_obj] = conc_uM * 1e-6 
-                            except ValueError:
-                                st.error(f"'{name}' 的浓度输入有误，必须为数字！")
-                                st.stop()
+                    results = []
+                    # 遍历所有生成的复合物
+                    for complex_item, conc in res.complex_concentrations.items():
+                        conc_uM = conc / 1e-6
+                        if conc_uM > 1e-4:
+                            # 计算该复合物的 MFE 结构用于绘图
+                            mfe_res = mfe(strands=complex_item.strands, model=my_model)[0]
+                            results.append({
+                                "复合物": complex_item.name,
+                                "浓度 (µM)": conc_uM,
+                                "MFE": mfe_res.energy,
+                                "结构": str(mfe_res.structure),
+                                "obj": complex_item, # 存储对象用于后续取序列
+                                "struct_v": str(mfe_res.structure).replace("+", "&") # 转换符号
+                            })
                     
-                    if len(strands_dict) == 0:
-                        st.warning("请至少输入一条有效的序列！")
-                    else:
-                        # 创建试管进行分析
-                        my_tube = Tube(strands=strands_dict, complexes=SetSpec(max_size=max_size), name="Simulation_Tube")
-                        tube_results = tube_analysis(tubes=[my_tube], model=my_model)
-                        res = tube_results[my_tube]
-                        
+                    df_res = pd.DataFrame(results).sort_values("浓度 (µM)", ascending=False).reset_index(drop=True)
+                    st.success("计算完成！")
+                    st.bar_chart(df_res.set_index("复合物")["浓度 (µM)"])
+                    st.dataframe(df_res[["复合物", "浓度 (µM)", "MFE", "结构"]], use_container_width=True)
 
-                        results_data = []
-                        for complex_item, concentration in res.complex_concentrations.items():
-                            conc_uM = concentration / 1e-6
+                    # 🌟 重点：为浓度最高的复合物生成结构图
+                    if not df_res.empty:
+                        top_complex = df_res.iloc[0]
+                        st.subheader(f"主产物结构图: {top_complex['复合物']}")
                         
-                            
-                            # 过滤掉极低浓度的微量副产物（比如低于 0.0001 µM）使结果更干净
-                            if conc_uM > 1e-4:
-                                comp_mfe = mfe(strands=complex_item.strands, model=my_model)[0]
-                                results_data.append({
-                                    "复合物组合": complex_item.name, 
-                                    "平衡浓度 (µM)": conc_uM,
-                                    "MFE 能量 (kcal/mol)": comp_mfe.energy,
-                                    "最稳定二级结构": str(comp_mfe.structure)
-                                })
+                        # 合并序列用于 ViennaRNA 绘图，链之间用 & 分割
+                        combined_seq = "&".join([s.sequence for s in top_complex["obj"].strands])
+                        vienna_struct = top_complex["struct_v"]
                         
-                        df_results = pd.DataFrame(results_data)
-                        df_results = df_results.sort_values(by="平衡浓度 (µM)", ascending=False).reset_index(drop=True)
-                        
-                        st.success(" 分析完成！")
-                        
-                        # --- 4. 结果可视化输出 ---
-                        st.markdown("平衡态最终浓度分布 (Equilibrium Concentrations)")
-                        st.markdown("该图展示了在充分反应后，试管中各种游离单链、杂交双链或多聚体的最终浓度。")
-                        chart_data = df_results.set_index("复合物组合")["平衡浓度 (µM)"]
-                        st.bar_chart(chart_data)
-                        
-                        st.markdown("### 详细复合物热力学属性 (Complex Thermodynamics)")
-                        st.dataframe(df_results, use_container_width=True)
-
-                        
-                        # 1. 准备绘图所需的“翻译”数据
-                        # NUPACK 的序列是一个列表，我们需要用 '&' 将它们连接起来
-                        combined_seq = "&".join(clean_lines)
-                        
-                        # NUPACK 的结构字符串中使用 '+' 分隔链，我们需要换成 '&' 才能让 ViennaRNA 绘图
-                        vienna_struct = str(best_result.structure).replace("+", "&")
-                        
-                        st.write("👉 最佳结合状态下的二维结构 (点号-括号表示):")
-                        st.code(str(best_result.structure), language="text")
-                        
-                        # 2. 生成 SVG 矢量结构图
-                        # 我们给多链图起个不同的名字，防止和单链图冲突
-                        temp_multi_svg = "temp_multi_struct.svg"
-                        
-                        # 调用 ViennaRNA 的绘图函数
-                        # 它非常聪明，看到序列和结构中有 '&' 就会自动按照多链杂交的模式画图
-                        RNA.svg_rna_plot(combined_seq, vienna_struct, temp_multi_svg)
-                        
-                        # 3. 在网页上渲染图片
-                        st.subheader("🖼️ 多链杂交二级结构图")
-                        with open(temp_multi_svg, "r") as f:
-                            svg_code = f.read()
-                        
-                        # 居中展示
-                        components.html(f"<div style='text-align: center;'>{svg_code}</div>", height=600)
-
-                
-                            
+                        plot_file = "temp_multi.svg"
+                        RNA.svg_rna_plot(combined_seq, vienna_struct, plot_file)
+                        with open(plot_file, "r") as f:
+                            st.components.v1.html(f"<div style='text-align:center;'>{f.read()}</div>", height=600)
+                        os.remove(plot_file)
 
                 except Exception as e:
-                    st.error(f"NUPACK 计算异常，请检查序列中是否包含非标碱基：{e}")
-
-
-
-            
+                    st.error(f"计算出错: {e}")
