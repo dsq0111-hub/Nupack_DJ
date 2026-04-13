@@ -135,7 +135,7 @@ with tab2:
                     # 🌟 重点绘图区：按概率排列生成多个结构图
                     if not df_res.empty:
                         st.markdown("---")
-                        st.subheader("🖼️ 产物结构分布图 (按生成概率排序)")
+                        st.subheader("产物结构分布图 (按生成概率排序)")
                         
                         # 设置想要展示的产物数量，建议前 3-5 个，避免页面过长
                         top_n = st.slider("展示排名前几位的产物图？", 1, 10, 3)
@@ -144,7 +144,7 @@ with tab2:
                         for i, row in df_res.head(top_n).iterrows():
                             # 计算百分比概率 (该复合物浓度 / 总浓度)
                             # 注意：这里简化为直接展示浓度，因为 NUPACK 的浓度直接反映了概率
-                            prob_text = f"生成浓度: {row['平衡浓度 (µM)']:.4f} µM"
+                            prob_text = f"生成浓度: {row['浓度 (µM)']:.4f} µM"
                             
                             with st.expander(f"排行 #{i+1}: {row['复合物']} ({prob_text})", expanded=(i==0)):
                                 col_text, col_plot = st.columns([1, 2])
