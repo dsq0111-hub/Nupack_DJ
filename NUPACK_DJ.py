@@ -238,19 +238,27 @@ with tab2:
         df_res = st.session_state.nupack_results
         seq_map = st.session_state.nupack_seq_map
         
-        st.markdown("---")
-        st.subheader("试管平衡态数据")
-        st.bar_chart(df_res.set_index("复合物")["浓度 (µM)"])
-        st.dataframe(df_res[["复合物", "浓度 (µM)", "MFE", "结构"]], use_container_width=True)
 
-        st.markdown("###产物结构分布图 ")
+
+        st.markdown("### 🖼️ 产物结构分布图 ")
         
-        # 滑块控件：限制最大范围为产物总数
+        # 🌟 修复 Bug：增加安全判断，防止滑块数值冲突
         max_items = len(df_res)
-        default_val = min(3, max_items)
-        top_n = st.slider("展示排名前几位的产物图？", 1, max_items, default_val)
+        
+        if max_items == 0:
+            st.info("⚠️ 当前体系下未生成具有显著浓度的稳定复合物结构。")
+        else:
+            if max_items == 1:
+                st.caption(" 体系中仅生成了 1 种主要产物。")
+                top_n = 1
+            else:
+                default_val = min(3, max_items)
+                top_n = st.slider("展示排名前几位的产物图？", 1, max_items, default_val)
+            
         
         for i, row in df_res.head(top_n).iterrows():
+
+            
             prob_text = f"生成浓度: {row['浓度 (µM)']:.4f} µM"
             
             with st.expander(f"排行 #{i+1}: {row['复合物']} ({prob_text})", expanded=(i==0)):
