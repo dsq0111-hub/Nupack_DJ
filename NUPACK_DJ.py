@@ -132,24 +132,49 @@ with tab2:
                     st.bar_chart(df_res.set_index("复合物")["浓度 (µM)"])
                     st.dataframe(df_res[["复合物", "浓度 (µM)", "MFE", "结构"]], use_container_width=True)
 
-                    # 🌟 重点绘图区
+                    # 🌟 重点绘图区：按概率排列生成多个结构图
                     if not df_res.empty:
-                        top_complex = df_res.iloc[0]
-                        st.subheader(f"主产物结构图: {top_complex['复合物']}")
+                        st.markdown("---")
+                        st.subheader("🖼️ 产物结构分布图 (按生成概率排序)")
                         
-                        # 🌟 核心修复 2：用链的名字 s.name，去我们的备忘录 seq_map 里把真正的序列取出来！
-                        combined_seq = "&".join([seq_map[s.name] for s in top_complex["obj"].strands])
+                        # 设置想要展示的产物数量，建议前 3-5 个，避免页面过长
+                        top_n = st.slider("展示排名前几位的产物图？", 1, 10, 3)
                         
-                        vienna_struct = top_complex["struct_v"]
-                        
-                        plot_file = "temp_multi.svg"
-                        RNA.svg_rna_plot(combined_seq, vienna_struct, plot_file)
-                        with open(plot_file, "r") as f:
-                            st.components.v1.html(f"<div style='text-align:center;'>{f.read()}</div>", height=600)
-                        
-                        # 画完清理文件
-                        if os.path.exists(plot_file):
-                            os.remove(plot_file)
+                        # 遍历 DataFrame 的前 N 行
+                        for i, row in df_res.head(top_n).iterrows():
+                            # 计算百分比概率 (该复合物浓度 / 总浓度)
+                            # 注意：这里简化为直接展示浓度，因为 NUPACK 的浓度直接反映了概率
+                            prob_text = f"生成浓度: {row['平衡浓度 (µM)']:.4f} µM"
+                            
+                            with st.expander(f"排行 #{i+1}: {row['复合物']} ({prob_text})", expanded=(i==0)):
+                                col_text, col_plot = st.columns([1, 2])
+                                
+                                with col_text:
+                                    st.write(f"**能量 (MFE):** {row['MFE']:.2f} kcal/mol")
+                                    st.write("**结构代码:**")
+                                    st.code(row['结构'], language="text")
+                                
+                                with col_plot:
+                                    # 拼接序列和结构（使用备忘录模式获取序列）
+                                    combined_seq = "&".join([seq_map[s.name] for s in row["obj"].strands])
+                                    vienna_struct = row["struct_v"]
+                                    
+                                    # 为每个图创建一个临时文件
+                                    plot_file = f"temp_multi_{i}.svg"
+                                    RNA.svg_rna_plot(combined_seq, vienna_struct, plot_file)
+                                    
+                                    with open(plot_file, "r") as f:
+                                        svg_content = f.read()
+                                    
+                                    # 渲染 SVG
+                                    st.components.v1.html(
+                                        f"<div style='text-align:center;'>{svg_content}</div>", 
+                                        height=450
+                                    )
+                                    
+                                    # 清理文件
+                                    if os.path.exists(plot_file):
+                                        os.remove(plot_file)
 
                 except Exception as e:
                     st.error(f"计算出错: {e}")
