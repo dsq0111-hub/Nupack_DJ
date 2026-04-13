@@ -238,9 +238,40 @@ with tab2:
         df_res = st.session_state.nupack_results
         seq_map = st.session_state.nupack_seq_map
         
+        st.markdown("---")
+        st.subheader("📊 试管平衡态：产物分布与概率统计")
 
+        # 🌟 核心改进：计算形成概率 (%)
+        total_conc = df_res["浓度 (µM)"].sum()
+        if total_conc > 0:
+            df_res["形成概率 (%)"] = (df_res["浓度 (µM)"] / total_conc) * 100
+        else:
+            df_res["形成概率 (%)"] = 0
 
-        st.markdown("### 🖼️ 产物结构分布图 ")
+        # 调整列顺序，把最关心的“概率”和“浓度”放在最前面
+        display_df = df_res[["复合物", "形成概率 (%)", "浓度 (µM)", "MFE", "结构"]]
+
+        # 使用 st.column_config 在表格里画出“小进度条”，一眼看出谁是大头
+        st.dataframe(
+            display_df,
+            column_config={
+                "形成概率 (%)": st.column_config.ProgressColumn(
+                    "形成概率 (%)",
+                    help="该复合物在所有产物中所占的摩尔百分比",
+                    format="%.2f%%",
+                    min_value=0,
+                    max_value=100,
+                ),
+                "浓度 (µM)": st.column_config.NumberColumn(format="%.4f µM")
+            },
+            use_container_width=True,
+            hide_index=True
+        )
+
+        st.bar_chart(df_res.set_index("复合物")["形成概率 (%)"])
+        
+    
+        st.markdown("### 产物结构分布图 ")
         
         # 🌟 修复 Bug：增加安全判断，防止滑块数值冲突
         max_items = len(df_res)
