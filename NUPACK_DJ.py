@@ -135,13 +135,52 @@ with tab2:
     with col_p3:
         max_size = st.number_input("最大尺寸 (几聚体):", min_value=1, max_value=4, value=2)
 
-    st.markdown("#### 反应组分与浓度")
-    default_data = pd.DataFrame({
-        "名称": ["链1", "链2"],
-        "序列": ["AGUCUAGGAUUCGGCGUG", "CACGCCGAAUCCUAGACU"],
-        "浓度 (µM)": [1.0, 1.0]
-    })
+    
+    st.markdown("---")
+    st.markdown("#### 实验记录存档与读取")
+    st.info("退出网页前，您可以将当前表格保存为本地文件；下次打开网页时可以直接导入该文件")
+    
+    col_file1, col_file2 = st.columns(2)
+
+    with col_file1:
+        # 1. 导入功能 (上传 CSV)
+        uploaded_file = st.file_uploader("📂 导入历史序列数据 (.csv)", type=["csv"])
+
+    # 2. 判断用户是否上传了文件：如果有，就用历史记录；如果没有，就给个默认例子
+    if uploaded_file is not None:
+        try:
+            default_data = pd.read_csv(uploaded_file)
+            st.success("历史记录加载成功！")
+        except Exception as e:
+            st.error("读取失败，请确保文件是由本软件生成的存档。")
+            default_data = pd.DataFrame({"名称": ["链1", "链2"], "序列": ["AGUCUAGGAUUCGGCGUG", "CACGCCGAAUCCUAGACU"], "浓度 (µM)": [1.0, 1.0]})
+    else:
+        default_data = pd.DataFrame({
+            "名称": ["链1", "链2"],
+            "序列": ["AGUCUAGGAUUCGGCGUG", "CACGCCGAAUCCUAGACU"],
+            "浓度 (µM)": [1.0, 1.0]
+        })
+
+    st.markdown("#### 🧪 反应组分与浓度")
+    # 3. 渲染出带有数据的可编辑表格
     edited_df = st.data_editor(default_data, num_rows="dynamic", use_container_width=True)
+
+    with col_file2:
+        # 4. 导出功能 (下载当前表格为 CSV)
+        # 将当前编辑好的表格转化为 csv 格式文本 (使用 utf-8-sig 防止中文在 Excel 里乱码)
+        csv_data = edited_df.to_csv(index=False).encode('utf-8-sig')
+        
+        # 占位符调整对齐高度
+        st.markdown("<br><br>", unsafe_allow_html=True)
+        st.download_button(
+            label="保存当前表格为历史存档 (.csv)",
+            data=csv_data,
+            file_name="My_NUPACK_Sequences.csv",
+            mime="text/csv",
+            help="下载后，下次打开网页时可以直接在左侧上传这个文件，恢复所有数据。"
+        )
+
+
     
     # ----------------------------------------
     # 逻辑核心：点击按钮只负责"计算"并"存入缓存"
