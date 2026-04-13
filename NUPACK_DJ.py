@@ -177,6 +177,36 @@ with tab2:
                         st.markdown("### 详细复合物热力学属性 (Complex Thermodynamics)")
                         st.dataframe(df_results, use_container_width=True)
 
+                        
+                        # 1. 准备绘图所需的“翻译”数据
+                        # NUPACK 的序列是一个列表，我们需要用 '&' 将它们连接起来
+                        combined_seq = "&".join(clean_lines)
+                        
+                        # NUPACK 的结构字符串中使用 '+' 分隔链，我们需要换成 '&' 才能让 ViennaRNA 绘图
+                        vienna_struct = str(best_result.structure).replace("+", "&")
+                        
+                        st.write("👉 最佳结合状态下的二维结构 (点号-括号表示):")
+                        st.code(str(best_result.structure), language="text")
+                        
+                        # 2. 生成 SVG 矢量结构图
+                        # 我们给多链图起个不同的名字，防止和单链图冲突
+                        temp_multi_svg = "temp_multi_struct.svg"
+                        
+                        # 调用 ViennaRNA 的绘图函数
+                        # 它非常聪明，看到序列和结构中有 '&' 就会自动按照多链杂交的模式画图
+                        RNA.svg_rna_plot(combined_seq, vienna_struct, temp_multi_svg)
+                        
+                        # 3. 在网页上渲染图片
+                        st.subheader("🖼️ 多链杂交二级结构图")
+                        with open(temp_multi_svg, "r") as f:
+                            svg_code = f.read()
+                        
+                        # 居中展示
+                        components.html(f"<div style='text-align: center;'>{svg_code}</div>", height=600)
+
+                
+                            
+
                 except Exception as e:
                     st.error(f"NUPACK 计算异常，请检查序列中是否包含非标碱基：{e}")
 
