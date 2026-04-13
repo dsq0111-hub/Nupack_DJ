@@ -70,13 +70,10 @@ with tab1:
        
 
 # ==========================================
-# 标签页 2：NUPACK 多链杂交分析 (全新高级功能)
-# ==========================================
-# ==========================================
-# 标签页 2：NUPACK 试管平衡态分析 (高度还原 NUPACK 官方功能)
-# ==========================================
+# 标签页 2：NUPACK 多链杂交分析 
+
 with tab2:
-    st.subheader("模式二：多链试管平衡态分析 (NUPACK Tube Analysis)")
+    st.subheader("模式二：多链杂交分析 (NUPACK Tube Analysis)")
     st.markdown("还原 NUPACK 官方网站的试管模拟功能。支持任意数量的核酸链、自定义浓度、以及盐离子浓度调节。")
     
     if not nupack_available:
@@ -150,9 +147,11 @@ with tab2:
                         tube_results = tube_analysis(tubes=[my_tube], model=my_model)
                         res = tube_results[my_tube]
                         
+
                         results_data = []
-                        for complex_item, complex_result in res.complexes.items():
-                            conc_uM = complex_result.concentration / 1e-6 
+                        for complex_item, concentration in res.complex_concentrations.items():
+                            conc_uM = concentration / 1e-6
+                        
                             
                             # 过滤掉极低浓度的微量副产物（比如低于 0.0001 µM）使结果更干净
                             if conc_uM > 1e-4:
