@@ -13,34 +13,27 @@ try:
 except ImportError:
     nupack_available = False
 
-st.set_page_config(page_title="核酸分析平台", layout="wide", page_icon="🧬")
-st.title("🧬核酸序列分析与多链配对平台")
+st.set_page_config(page_title="高级核酸分析平台", layout="wide", page_icon="🧬")
+st.title("🧬 高级核酸序列分析与多链配对平台")
 
 tab1, tab2 = st.tabs(["单链常规分析 (ViennaRNA)", "多链杂交模拟 (NUPACK)"])
 
 # ==========================================
-# 自动排版回调函数：去空格 -> 转大写 -> 6个一组
+# 标签页 1：单链分析 (回调自动排版)
 # ==========================================
 def format_single_seq():
     raw = st.session_state.seq1_raw
     clean = raw.upper().replace(" ", "").replace("\n", "")
     st.session_state.seq1_raw = " ".join([clean[i:i+6] for i in range(0, len(clean), 6)])
 
-
-
-# ==========================================
-# 标签页 1：单链分析 
-# ==========================================
 with tab1:
     st.subheader("模式一：单链二级结构与参数计算")
     
-    # 绑定回调函数到 Session State
     if 'seq1_raw' not in st.session_state:
         st.session_state.seq1_raw = "GCGCUU CGCCGC CCCGUG CUG"
         
     st.info("💡 提示：在此处随意输入序列 (支持小写、带空格)。输入完成后点击框外，系统会自动排版为标准格式")
     
-    # 输入框，绑定了 on_change 自动排版事件
     sequence_input = st.text_area(
         "输入单条 RNA/DNA 序列:", 
         key="seq1_raw", 
@@ -48,18 +41,17 @@ with tab1:
         height=100
     )
     
-    # 🌟 核心改进：底层算法逻辑控制器
-    st.markdown("#### ⚙️ 底层配对算法控制")
-    strict_wc = st.checkbox("🚫 严格禁止 G-U / G-T 摆动配对 (强制仅允许 A-T/U, G-C 经典配对)", value=True)
+    st.markdown("####  底层配对算法控制")
+    strict_wc = st.checkbox(" 严格禁止 G-U / G-T 摆动配对 (强制仅允许 A-T/U, G-C 经典配对)", value=True)
     
     if st.button("开始单链分析"):
         clean_seq = sequence_input.replace(" ", "")
         if clean_seq:
-            # 🌟 核心：修改 ViennaRNA 底层全局变量
+            # 算法控制阀门
             if strict_wc:
-                RNA.cvar.noGU = 1  # 彻底封杀 G-U 配对
+                RNA.cvar.noGU = 1 
             else:
-                RNA.cvar.noGU = 0  # 恢复物理默认允许
+                RNA.cvar.noGU = 0 
                 
             g_count = clean_seq.count('G')
             c_count = clean_seq.count('C')
@@ -75,11 +67,11 @@ with tab1:
 
             st.success("分析完成！")
             col_a, col_b, col_c = st.columns(3)
-            col_a.metric("GC 含量", f"{gc_content:.2f}%")
-            col_b.metric("最小自由能 (MFE)", f"{mfe_val:.2f} kcal/mol")
-            col_c.metric("预测 Tm 值", tm_display)
+            col_a.metric(" GC 含量", f"{gc_content:.2f}%")
+            col_b.metric(" 最小自由能 (MFE)", f"{mfe_val:.2f} kcal/mol")
+            col_c.metric(" 预测 Tm 值", tm_display)
             
-            st.text_input("二级结构 (点号-括号):", value=struct)
+            st.text_input(" 二级结构 (点号-括号):", value=struct)
             
             temp_svg = "temp_single.svg"
             RNA.svg_rna_plot(clean_seq, struct, temp_svg)
@@ -90,7 +82,7 @@ with tab1:
                 height=500
             )
             st.download_button(
-                label="下载单链结构矢量图 (.svg)",
+                label=" 下载单链结构矢量图 (.svg)",
                 data=svg_code,
                 file_name="Single_Strand_Structure.svg",
                 mime="image/svg+xml",
@@ -100,12 +92,12 @@ with tab1:
                 os.remove(temp_svg)
 
 # ==========================================
-# 标签页 2：NUPACK 多链模拟 
+# 标签页 2：NUPACK 多链模拟 (彻底修复内存丢失 Bug 版)
 # ==========================================
 with tab2:
     st.subheader("模式二：多链杂交平衡态模拟")
     if not nupack_available:
-        st.warning("⚠️ 检测到当前环境未安装 NUPACK。部署到云端后将自动激活。")
+        st.warning(" 检测到当前环境未安装 NUPACK。部署到云端后将自动激活。")
 
     def polish_svg(svg_str, chain_sequences):
         svg_str = re.sub(r'<text[^>]*>&amp;</text>', '', svg_str)
@@ -126,6 +118,15 @@ with tab2:
             
         return re.sub(r'<text[^>]*>[A-Za-z]</text>', color_injector, svg_str)
 
+    # 🌟 核心修复 1：定义绝对唯一的“主数据源 (Master Data)”
+    if 'master_df' not in st.session_state:
+        st.session_state.master_df = pd.DataFrame({
+            "名称": ["Target", "Probe"],
+            "序列": ["AGUCUAGGAUUCGGCGUG", "CACGCCGAAUCCUAGACU"],
+            "浓度 (µM)": [1.0, 1.0]
+        })
+    if 'editor_key' not in st.session_state:
+        st.session_state.editor_key = 0
     if 'nupack_results' not in st.session_state:
         st.session_state.nupack_results = None
     if 'nupack_seq_map' not in st.session_state:
@@ -138,61 +139,56 @@ with tab2:
         n_temp = st.number_input("温度 (°C):", value=37.0)
     with col_p3:
         max_size = st.number_input("最大尺寸 (几聚体):", min_value=1, max_value=4, value=2)
-        n_na = 1.0  # 隐藏不常用的盐离子，保持界面清爽
+        n_na = 1.0 
         n_mg = 0.0
 
     st.markdown("---")
-    st.markdown("#### 实验记录与序列管理")
+    st.markdown("####  实验记录与序列管理")
     
     col_file1, col_file2 = st.columns(2)
     with col_file1:
-        uploaded_file = st.file_uploader("导入历史序列数据 (.csv)", type=["csv"])
+        uploaded_file = st.file_uploader("📂 导入历史序列数据 (.csv)", type=["csv"])
 
-    # 绑定表格数据到 Session State 方便格式化
-    if 'nupack_input_df' not in st.session_state:
-        if uploaded_file is not None:
-            st.session_state.nupack_input_df = pd.read_csv(uploaded_file)
-        else:
-            st.session_state.nupack_input_df = pd.DataFrame({
-                "名称": ["Target", "Probe"],
-                "序列": ["AGUCUA GGAUUC GGCGUG", "CACGCC GAAUCC UAGACU"],
-                "浓度 (µM)": [1.0, 1.0]
-            })
+    # 🌟 核心修复 2：稳健的文件上传覆盖逻辑
+    if uploaded_file is not None:
+        if 'last_uploaded' not in st.session_state or st.session_state.last_uploaded != uploaded_file.name:
+            try:
+                st.session_state.master_df = pd.read_csv(uploaded_file)
+                st.session_state.last_uploaded = uploaded_file.name
+                st.session_state.editor_key += 1 # 强制刷新表格以显示新文件内容
+            except Exception:
+                st.error("读取文件失败，请检查格式。")
 
-    # 🌟 新增：表格 UI 强制刷新计数器
-    if 'editor_key' not in st.session_state:
-        st.session_state.editor_key = 0
+    # 🌟 核心修复 3：绝对安全的格式化逻辑 (防越界、防空行)
+    if st.button(" 一键排版表格序列 (去空 / 大写 / 6位分隔)"):
+        df = st.session_state.master_df.copy()
+        for idx in df.index: # 使用 index 而不是 range(len)，防止删行后报错
+            val = df.at[idx, "序列"]
+            if pd.isna(val): # 防止用户留空行引发 NaN 报错
+                df.at[idx, "序列"] = ""
+            else:
+                seq = str(val).upper().replace(" ", "").replace("\n", "")
+                df.at[idx, "序列"] = " ".join([seq[j:j+6] for j in range(0, len(seq), 6)])
+        st.session_state.master_df = df
+        st.session_state.editor_key += 1 # 强制刷新表格 UI
 
-    if st.button("✨ 一键排版表格序列 (去空 / 大写 / 6位分隔)"):
-        # 使用 copy() 隔绝内存冲突
-        df = st.session_state.nupack_input_df.copy()
-        for i in range(len(df)):
-            seq = str(df.at[i, "序列"]).upper().replace(" ", "").replace("\n", "")
-            df.at[i, "序列"] = " ".join([seq[j:j+6] for j in range(0, len(seq), 6)])
-        st.session_state.nupack_input_df = df
-        # 核心：给计数器加 1，强制换一个新的表格组件
-        st.session_state.editor_key += 1 
-
-    st.markdown("#### 反应组分与浓度")
+    st.markdown("####  反应组分与浓度")
     
-    # 🌟 修复 Bug：去掉了容易崩溃的旧 key，换成了带计数器的动态 key
+    # 渲染带有动态 Key 的表格，并实时将结果写回 master_df
     edited_df = st.data_editor(
-        st.session_state.nupack_input_df, 
+        st.session_state.master_df, 
         key=f"editor_{st.session_state.editor_key}", 
         num_rows="dynamic", 
         use_container_width=True
     )
-    
-    # 将用户在网页上对表格做的任何手写修改，实时存入大脑
-    st.session_state.nupack_input_df = edited_df
-
+    st.session_state.master_df = edited_df
 
     with col_file2:
         csv_data = edited_df.to_csv(index=False).encode('utf-8-sig')
         st.markdown("<br><br>", unsafe_allow_html=True)
-        st.download_button("保存当前表格为存档 (.csv)", data=csv_data, file_name="NUPACK_Sequences.csv", mime="text/csv")
+        st.download_button(" 保存当前表格为存档 (.csv)", data=csv_data, file_name="NUPACK_Sequences.csv", mime="text/csv")
 
-    if st.button("🚀 启动 NUPACK 分析"):
+    if st.button(" 启动 NUPACK 分析"):
         if not nupack_available:
             st.error("本地环境无法运行 NUPACK。")
         else:
@@ -203,8 +199,11 @@ with tab2:
                     local_seq_map = {} 
                     
                     for _, row in edited_df.iterrows():
-                        s_name, s_seq = str(row["名称"]).strip(), str(row["序列"]).upper().replace(" ", "")
-                        if s_seq and s_name:
+                        s_name = str(row["名称"]).strip()
+                        val = row["序列"]
+                        # 防御性代码：忽略空行和无效数据
+                        s_seq = "" if pd.isna(val) else str(val).upper().replace(" ", "")
+                        if s_seq and s_name and s_name != 'nan':
                             strands_dict[Strand(s_seq, name=s_name)] = float(row["浓度 (µM)"]) * 1e-6
                             local_seq_map[s_name] = s_seq 
 
@@ -229,6 +228,8 @@ with tab2:
                         st.session_state.nupack_results = pd.DataFrame(results).sort_values("浓度 (µM)", ascending=False).reset_index(drop=True)
                         st.session_state.nupack_seq_map = local_seq_map
                         st.success("🎉 计算完成！")
+                    else:
+                        st.warning("表格中没有有效的序列，请补充后再试！")
                 except Exception as e:
                     st.error(f"计算出错: {e}")
 
@@ -237,7 +238,7 @@ with tab2:
         seq_map = st.session_state.nupack_seq_map
         
         st.markdown("---")
-        st.subheader("产物分布统计")
+        st.subheader(" 试管平衡态：产物分布统计")
 
         total_conc = df_res["浓度 (µM)"].sum()
         df_res["形成概率 (%)"] = (df_res["浓度 (µM)"] / total_conc) * 100 if total_conc > 0 else 0
@@ -252,11 +253,11 @@ with tab2:
             use_container_width=True, hide_index=True
         )
 
-        st.markdown("###产物结构分布图")
+        st.markdown("###  产物结构分布图 (高清彩色版)")
         max_items = len(df_res)
         
         if max_items == 0:
-            st.info("⚠️ 当前体系未生成显著的稳定复合物结构。")
+            st.info(" 当前体系未生成显著的稳定复合物结构。")
         else:
             top_n = 1 if max_items == 1 else st.slider("展示排名前几位的产物图？", 1, max_items, min(3, max_items))
             
@@ -272,7 +273,7 @@ with tab2:
                         st.code(row['结构'], language="text")
                         
                         st.markdown("**链颜色说明:**")
-                        colors_list = ["🔴 红", "🔵 蓝", "🟢 绿", "🟣 紫", "🟠 橙"]
+                        colors_list = [" 红", " 蓝", " 绿", " 紫", " 橙"]
                         for idx, s in enumerate(row["obj"].strands):
                             st.caption(f"{colors_list[idx % len(colors_list)]} : {s.name}")
                     
@@ -291,7 +292,7 @@ with tab2:
                             height=400
                         )
                         st.download_button(
-                            label="下载此结构矢量图 (.svg)",
+                            label=" 下载此结构矢量图 (.svg)",
                             data=polished_svg, file_name=f"Rank{i+1}_{row['复合物']}.svg", mime="image/svg+xml", key=f"dl_btn_{i}"
                         )
                         if os.path.exists(plot_file):
