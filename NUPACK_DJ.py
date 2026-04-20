@@ -26,12 +26,7 @@ def format_single_seq():
     clean = raw.upper().replace(" ", "").replace("\n", "")
     st.session_state.seq1_raw = " ".join([clean[i:i+6] for i in range(0, len(clean), 6)])
 
-def format_df_seqs():
-    df = st.session_state.nupack_input_df
-    for i in range(len(df)):
-        seq = str(df.at[i, "序列"]).upper().replace(" ", "").replace("\n", "")
-        df.at[i, "序列"] = " ".join([seq[j:j+6] for j in range(0, len(seq), 6)])
-    st.session_state.nupack_input_df = df
+
 
 # ==========================================
 # 标签页 1：单链分析 
@@ -138,7 +133,7 @@ with tab2:
 
     col_p1, col_p2, col_p3 = st.columns(3)
     with col_p1:
-        n_mat = st.selectbox("材质:", ["rna", "dna"])
+        n_mat = st.selectbox("材质:", ["RNA", "DNA"])
     with col_p2:
         n_temp = st.number_input("温度 (°C):", value=37.0)
     with col_p3:
@@ -164,12 +159,33 @@ with tab2:
                 "浓度 (µM)": [1.0, 1.0]
             })
 
-    # 一键排版按钮
-    if st.button("一键排版表格序列 (去空 / 大写 / 6位分隔)"):
-        format_df_seqs()
+    # 🌟 新增：表格 UI 强制刷新计数器
+    if 'editor_key' not in st.session_state:
+        st.session_state.editor_key = 0
 
-    st.markdown("####反应组分与浓度")
-    edited_df = st.data_editor(st.session_state.nupack_input_df, key="nupack_input_df", num_rows="dynamic", use_container_width=True)
+    if st.button("✨ 一键排版表格序列 (去空 / 大写 / 6位分隔)"):
+        # 使用 copy() 隔绝内存冲突
+        df = st.session_state.nupack_input_df.copy()
+        for i in range(len(df)):
+            seq = str(df.at[i, "序列"]).upper().replace(" ", "").replace("\n", "")
+            df.at[i, "序列"] = " ".join([seq[j:j+6] for j in range(0, len(seq), 6)])
+        st.session_state.nupack_input_df = df
+        # 核心：给计数器加 1，强制换一个新的表格组件
+        st.session_state.editor_key += 1 
+
+    st.markdown("#### 反应组分与浓度")
+    
+    # 🌟 修复 Bug：去掉了容易崩溃的旧 key，换成了带计数器的动态 key
+    edited_df = st.data_editor(
+        st.session_state.nupack_input_df, 
+        key=f"editor_{st.session_state.editor_key}", 
+        num_rows="dynamic", 
+        use_container_width=True
+    )
+    
+    # 将用户在网页上对表格做的任何手写修改，实时存入大脑
+    st.session_state.nupack_input_df = edited_df
+
 
     with col_file2:
         csv_data = edited_df.to_csv(index=False).encode('utf-8-sig')
