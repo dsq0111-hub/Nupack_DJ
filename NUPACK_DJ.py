@@ -13,6 +13,13 @@ try:
 except ImportError:
     nupack_available = False
 
+# 封装兼容版本的页面刷新指令
+def trigger_rerun():
+    try:
+        st.rerun()
+    except AttributeError:
+        st.experimental_rerun()
+
 st.set_page_config(page_title="高级核酸分析平台", layout="wide", page_icon="🧬")
 st.title("🧬 高级核酸序列分析与多链配对平台")
 
@@ -23,8 +30,9 @@ tab1, tab2 = st.tabs(["单链常规分析 (ViennaRNA)", "多链杂交模拟 (NUP
 # ==========================================
 def format_single_seq():
     raw = st.session_state.seq1_raw
-    clean = raw.upper().replace(" ", "").replace("\n", "")
-    st.session_state.seq1_raw = " ".join([clean[i:i+6] for i in range(0, len(clean), 6)])
+    if raw:
+        clean = raw.upper().replace(" ", "").replace("\n", "")
+        st.session_state.seq1_raw = " ".join([clean[i:i+6] for i in range(0, len(clean), 6)])
 
 with tab1:
     st.subheader("模式一：单链二级结构与参数计算")
@@ -41,8 +49,8 @@ with tab1:
         height=100
     )
     
-    st.markdown("####  底层配对算法控制")
-    strict_wc = st.checkbox(" 严格禁止 G-U / G-T 摆动配对 (强制仅允许 A-T/U, G-C 经典配对)", value=True)
+    st.markdown("#### ⚙️ 底层配对算法控制")
+    strict_wc = st.checkbox("🚫 严格禁止 G-U / G-T 摆动配稳对 (强制仅允许 A-T/U, G-C 经典配对)", value=True)
     
     if st.button("开始单链分析"):
         clean_seq = sequence_input.replace(" ", "")
@@ -66,11 +74,11 @@ with tab1:
 
             st.success("分析完成！")
             col_a, col_b, col_c = st.columns(3)
-            col_a.metric(" GC 含量", f"{gc_content:.2f}%")
-            col_b.metric(" 最小自由能 (MFE)", f"{mfe_val:.2f} kcal/mol")
-            col_c.metric(" 预测 Tm 值", tm_display)
+            col_a.metric("💧 GC 含量", f"{gc_content:.2f}%")
+            col_b.metric("📉 最小自由能 (MFE)", f"{mfe_val:.2f} kcal/mol")
+            col_c.metric("🔥 预测 Tm 值", tm_display)
             
-            st.text_input(" 二级结构 (点号-括号):", value=struct)
+            st.text_input("🔗 二级结构 (点号-括号):", value=struct)
             
             temp_svg = "temp_single.svg"
             RNA.svg_rna_plot(clean_seq, struct, temp_svg)
@@ -81,7 +89,7 @@ with tab1:
                 height=500
             )
             st.download_button(
-                label=" 下载单链结构矢量图 (.svg)",
+                label="📥 下载单链结构矢量图 (.svg)",
                 data=svg_code,
                 file_name="Single_Strand_Structure.svg",
                 mime="image/svg+xml",
@@ -91,12 +99,12 @@ with tab1:
                 os.remove(temp_svg)
 
 # ==========================================
-# 标签页 2：NUPACK 多链模拟 
+# 标签页 2：NUPACK 多链模拟 (企业级稳定性重构版)
 # ==========================================
 with tab2:
     st.subheader("模式二：多链杂交平衡态模拟")
     if not nupack_available:
-        st.warning(" 检测到当前环境未安装 NUPACK。部署到云端后将自动激活。")
+        st.warning("⚠️ 检测到当前环境未安装 NUPACK。部署到云端后将自动激活。")
 
     def polish_svg(svg_str, chain_sequences):
         svg_str = re.sub(r'<text[^>]*>&amp;</text>', '', svg_str)
@@ -104,20 +112,35 @@ with tab2:
         colors = ["#E64B35", "#4DBBD5", "#00A087", "#3C5488", "#F39B7F"]
         chain_lengths = [len(seq) for seq in chain_sequences]
         tracker = {"chain_idx": 0, "base_count": 0}
+        end_labels = []
         
         def color_injector(match):
             tag = match.group(0)
             curr_chain = tracker["chain_idx"]
             color = colors[curr_chain % len(colors)]
+            
+            x_match = re.search(r'x="([-\d\.]+)"', tag)
+            y_match = re.search(r'y="([-\d\.]+)"', tag)
+            
+            if x_match and y_match:
+                x, y = float(x_match.group(1)), float(y_match.group(1))
+                if tracker["base_count"] == 0:
+                    end_labels.append(f"<text x='{x-12}' y='{y-12}' fill='{color}' font-size='12' font-weight='bold' font-family='Arial'>5'</text>")
+                if tracker["base_count"] == chain_lengths[curr_chain] - 1:
+                    end_labels.append(f"<text x='{x+12}' y='{y+12}' fill='{color}' font-size='12' font-weight='bold' font-family='Arial'>3'</text>")
+            
             tracker["base_count"] += 1
             if tracker["base_count"] >= chain_lengths[curr_chain]:
                 tracker["chain_idx"] += 1
                 tracker["base_count"] = 0
             return tag.replace("<text ", f"<text fill='{color}' font-weight='bold' ")
             
-        return re.sub(r'<text[^>]*>[A-Za-z]</text>', color_injector, svg_str)
+        modified_svg = re.sub(r'<text[^>]*>[A-Za-z]</text>', color_injector, svg_str)
+        if end_labels:
+            modified_svg = modified_svg.replace("</svg>", "\n".join(end_labels) + "\n</svg>")
+        return modified_svg
 
-    # 初始化记忆缓存
+    # 1. 初始化底座（绝对不随页面刷新被覆盖）
     if 'master_df' not in st.session_state:
         st.session_state.master_df = pd.DataFrame({
             "名称": ["Target", "Probe"],
@@ -138,64 +161,64 @@ with tab2:
         n_temp = st.number_input("温度 (°C):", value=37.0)
     with col_p3:
         max_size = st.number_input("最大尺寸 (几聚体):", min_value=1, max_value=4, value=2)
-        n_na = 1.0 
-        n_mg = 0.0
+        n_na, n_mg = 1.0, 0.0
 
     st.markdown("---")
-    st.markdown("####  实验记录与序列管理")
+    st.markdown("#### 💾 实验记录与序列管理")
     
-    uploaded_file = st.file_uploader("📂 导入历史序列数据 (.csv)", type=["csv"])
+    col_file1, col_file2 = st.columns(2)
+    with col_file1:
+        uploaded_file = st.file_uploader("📂 导入历史序列数据 (.csv)", type=["csv"])
+
+    # 2. 上传文件逻辑：安全覆盖底座，强制刷新组件
     if uploaded_file is not None:
         if 'last_uploaded' not in st.session_state or st.session_state.last_uploaded != uploaded_file.name:
             try:
                 st.session_state.master_df = pd.read_csv(uploaded_file)
                 st.session_state.last_uploaded = uploaded_file.name
                 st.session_state.editor_key += 1 
+                trigger_rerun()
             except Exception:
                 st.error("读取文件失败，请检查格式。")
 
-    st.markdown("####  反应组分与浓度")
+    st.markdown("#### 🧪 反应组分与浓度")
     
-    # 🌟 修复关键：第一步，必须先渲染表格！让表格抓取你刚刚输入的新数据，并存入 edited_df
-    edited_df = st.data_editor(
+    # 🌟 极度关键修复：分离读写。
+    # current_df 将实时包含您刚刚敲击键盘录入的所有最新字符！
+    current_df = st.data_editor(
         st.session_state.master_df, 
         key=f"editor_{st.session_state.editor_key}", 
         num_rows="dynamic", 
         use_container_width=True
     )
-    # 实时将最新数据备份进大脑
-    st.session_state.master_df = edited_df
 
-    # 🌟 修复关键：第二步，把按钮放在表格后面！它读取的是上面已经更新过的 edited_df
     col_btn1, col_btn2 = st.columns(2)
     with col_btn1:
         if st.button("✨ 一键排版表格序列 (去空 / 大写 / 6位分隔)"):
-            df = edited_df.copy() # 拷贝此刻最新的数据
-            for idx in df.index:
-                val = df.at[idx, "序列"]
-                if pd.isna(val):
-                    df.at[idx, "序列"] = ""
+            # 排版操作基于 current_df (包含了您的最新输入)
+            df_to_format = current_df.copy()
+            for idx in df_to_format.index:
+                val = df_to_format.at[idx, "序列"]
+                if pd.isna(val) or val is None:
+                    df_to_format.at[idx, "序列"] = ""
                 else:
                     seq = str(val).upper().replace(" ", "").replace("\n", "")
-                    df.at[idx, "序列"] = " ".join([seq[j:j+6] for j in range(0, len(seq), 6)])
+                    df_to_format.at[idx, "序列"] = " ".join([seq[j:j+6] for j in range(0, len(seq), 6)])
             
-            st.session_state.master_df = df
-            st.session_state.editor_key += 1 # 准备刷新组件
-            
-            # 强制页面立刻刷新，使表格呈现排版后的新面貌
-            try:
-                st.rerun()
-            except AttributeError:
-                st.experimental_rerun()
+            # 将排版好的数据保存至底座，改变 key 强制刷新组件
+            st.session_state.master_df = df_to_format
+            st.session_state.editor_key += 1 
+            trigger_rerun()
 
     with col_btn2:
-        csv_data = edited_df.to_csv(index=False).encode('utf-8-sig')
+        # 下载也基于包含您最新输入的 current_df
+        csv_data = current_df.to_csv(index=False).encode('utf-8-sig')
         st.download_button("📥 保存当前表格为存档 (.csv)", data=csv_data, file_name="NUPACK_Sequences.csv", mime="text/csv")
 
-
     st.markdown("---")
-    # 启动按钮由于在最下面，读取的也是绝对最新的 edited_df
-    if st.button(" 启动 NUPACK 分析"):
+    
+    # 计算基于包含您最新输入的 current_df，完美无缝衔接
+    if st.button("🚀 启动 NUPACK 分析"):
         if not nupack_available:
             st.error("本地环境无法运行 NUPACK。")
         else:
@@ -205,7 +228,7 @@ with tab2:
                     strands_dict = {}
                     local_seq_map = {} 
                     
-                    for _, row in edited_df.iterrows():
+                    for _, row in current_df.iterrows():
                         s_name = str(row["名称"]).strip()
                         val = row["序列"]
                         s_seq = "" if pd.isna(val) else str(val).upper().replace(" ", "")
@@ -244,7 +267,7 @@ with tab2:
         seq_map = st.session_state.nupack_seq_map
         
         st.markdown("---")
-        st.subheader(" 试管平衡态：产物分布统计")
+        st.subheader("📊 试管平衡态：产物分布统计")
 
         total_conc = df_res["浓度 (µM)"].sum()
         df_res["形成概率 (%)"] = (df_res["浓度 (µM)"] / total_conc) * 100 if total_conc > 0 else 0
@@ -259,11 +282,11 @@ with tab2:
             use_container_width=True, hide_index=True
         )
 
-        st.markdown("###  产物结构分布图 (高清彩色版)")
+        st.markdown("### 🖼️ 产物结构分布图 (高清彩色版)")
         max_items = len(df_res)
         
         if max_items == 0:
-            st.info(" 当前体系未生成显著的稳定复合物结构。")
+            st.info("⚠️ 当前体系未生成显著的稳定复合物结构。")
         else:
             top_n = 1 if max_items == 1 else st.slider("展示排名前几位的产物图？", 1, max_items, min(3, max_items))
             
@@ -278,7 +301,7 @@ with tab2:
                         st.write("**结构代码:**")
                         st.code(row['结构'], language="text")
                         
-                        st.markdown("**链颜色说明:**")
+                        st.markdown("**🎨 链颜色说明:**")
                         colors_list = ["🔴 红", "🔵 蓝", "🟢 绿", "🟣 紫", "🟠 橙"]
                         for idx, s in enumerate(row["obj"].strands):
                             st.caption(f"{colors_list[idx % len(colors_list)]} : {s.name}")
@@ -298,7 +321,7 @@ with tab2:
                             height=400
                         )
                         st.download_button(
-                            label=" 下载此结构矢量图 (.svg)",
+                            label="📥 下载此结构矢量图 (.svg)",
                             data=polished_svg, file_name=f"Rank{i+1}_{row['复合物']}.svg", mime="image/svg+xml", key=f"dl_btn_{i}"
                         )
                         if os.path.exists(plot_file):
