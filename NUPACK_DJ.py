@@ -47,7 +47,6 @@ with tab1:
     if st.button("开始单链分析"):
         clean_seq = sequence_input.replace(" ", "")
         if clean_seq:
-            # 算法控制阀门
             if strict_wc:
                 RNA.cvar.noGU = 1 
             else:
@@ -92,7 +91,7 @@ with tab1:
                 os.remove(temp_svg)
 
 # ==========================================
-# 标签页 2：NUPACK 多链模拟 (彻底修复内存丢失 Bug 版)
+# 标签页 2：NUPACK 多链模拟 
 # ==========================================
 with tab2:
     st.subheader("模式二：多链杂交平衡态模拟")
@@ -118,7 +117,7 @@ with tab2:
             
         return re.sub(r'<text[^>]*>[A-Za-z]</text>', color_injector, svg_str)
 
-    # 🌟 核心修复 1：定义绝对唯一的“主数据源 (Master Data)”
+    # 初始化记忆缓存
     if 'master_df' not in st.session_state:
         st.session_state.master_df = pd.DataFrame({
             "名称": ["Target", "Probe"],
@@ -145,49 +144,57 @@ with tab2:
     st.markdown("---")
     st.markdown("####  实验记录与序列管理")
     
-    col_file1, col_file2 = st.columns(2)
-    with col_file1:
-        uploaded_file = st.file_uploader("📂 导入历史序列数据 (.csv)", type=["csv"])
-
-    # 🌟 核心修复 2：稳健的文件上传覆盖逻辑
+    uploaded_file = st.file_uploader("📂 导入历史序列数据 (.csv)", type=["csv"])
     if uploaded_file is not None:
         if 'last_uploaded' not in st.session_state or st.session_state.last_uploaded != uploaded_file.name:
             try:
                 st.session_state.master_df = pd.read_csv(uploaded_file)
                 st.session_state.last_uploaded = uploaded_file.name
-                st.session_state.editor_key += 1 # 强制刷新表格以显示新文件内容
+                st.session_state.editor_key += 1 
             except Exception:
                 st.error("读取文件失败，请检查格式。")
 
-    # 🌟 核心修复 3：绝对安全的格式化逻辑 (防越界、防空行)
-    if st.button(" 一键排版表格序列 (去空 / 大写 / 6位分隔)"):
-        df = st.session_state.master_df.copy()
-        for idx in df.index: # 使用 index 而不是 range(len)，防止删行后报错
-            val = df.at[idx, "序列"]
-            if pd.isna(val): # 防止用户留空行引发 NaN 报错
-                df.at[idx, "序列"] = ""
-            else:
-                seq = str(val).upper().replace(" ", "").replace("\n", "")
-                df.at[idx, "序列"] = " ".join([seq[j:j+6] for j in range(0, len(seq), 6)])
-        st.session_state.master_df = df
-        st.session_state.editor_key += 1 # 强制刷新表格 UI
-
     st.markdown("####  反应组分与浓度")
     
-    # 渲染带有动态 Key 的表格，并实时将结果写回 master_df
+    # 🌟 修复关键：第一步，必须先渲染表格！让表格抓取你刚刚输入的新数据，并存入 edited_df
     edited_df = st.data_editor(
         st.session_state.master_df, 
         key=f"editor_{st.session_state.editor_key}", 
         num_rows="dynamic", 
         use_container_width=True
     )
+    # 实时将最新数据备份进大脑
     st.session_state.master_df = edited_df
 
-    with col_file2:
-        csv_data = edited_df.to_csv(index=False).encode('utf-8-sig')
-        st.markdown("<br><br>", unsafe_allow_html=True)
-        st.download_button(" 保存当前表格为存档 (.csv)", data=csv_data, file_name="NUPACK_Sequences.csv", mime="text/csv")
+    # 🌟 修复关键：第二步，把按钮放在表格后面！它读取的是上面已经更新过的 edited_df
+    col_btn1, col_btn2 = st.columns(2)
+    with col_btn1:
+        if st.button("✨ 一键排版表格序列 (去空 / 大写 / 6位分隔)"):
+            df = edited_df.copy() # 拷贝此刻最新的数据
+            for idx in df.index:
+                val = df.at[idx, "序列"]
+                if pd.isna(val):
+                    df.at[idx, "序列"] = ""
+                else:
+                    seq = str(val).upper().replace(" ", "").replace("\n", "")
+                    df.at[idx, "序列"] = " ".join([seq[j:j+6] for j in range(0, len(seq), 6)])
+            
+            st.session_state.master_df = df
+            st.session_state.editor_key += 1 # 准备刷新组件
+            
+            # 强制页面立刻刷新，使表格呈现排版后的新面貌
+            try:
+                st.rerun()
+            except AttributeError:
+                st.experimental_rerun()
 
+    with col_btn2:
+        csv_data = edited_df.to_csv(index=False).encode('utf-8-sig')
+        st.download_button("📥 保存当前表格为存档 (.csv)", data=csv_data, file_name="NUPACK_Sequences.csv", mime="text/csv")
+
+
+    st.markdown("---")
+    # 启动按钮由于在最下面，读取的也是绝对最新的 edited_df
     if st.button(" 启动 NUPACK 分析"):
         if not nupack_available:
             st.error("本地环境无法运行 NUPACK。")
@@ -201,7 +208,6 @@ with tab2:
                     for _, row in edited_df.iterrows():
                         s_name = str(row["名称"]).strip()
                         val = row["序列"]
-                        # 防御性代码：忽略空行和无效数据
                         s_seq = "" if pd.isna(val) else str(val).upper().replace(" ", "")
                         if s_seq and s_name and s_name != 'nan':
                             strands_dict[Strand(s_seq, name=s_name)] = float(row["浓度 (µM)"]) * 1e-6
@@ -273,7 +279,7 @@ with tab2:
                         st.code(row['结构'], language="text")
                         
                         st.markdown("**链颜色说明:**")
-                        colors_list = [" 红", " 蓝", " 绿", " 紫", " 橙"]
+                        colors_list = ["🔴 红", "🔵 蓝", "🟢 绿", "🟣 紫", "🟠 橙"]
                         for idx, s in enumerate(row["obj"].strands):
                             st.caption(f"{colors_list[idx % len(colors_list)]} : {s.name}")
                     
