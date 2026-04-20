@@ -99,24 +99,60 @@ with tab2:
     if not nupack_available:
         st.warning(" 检测到当前环境未安装 NUPACK。部署到云端后将自动激活。")
 
-    def polish_svg(svg_str, chain_sequences):
+def polish_svg(svg_str, chain_sequences):
+        # 1. 抹除画蛇添足的 '&' 符号
         svg_str = re.sub(r'<text[^>]*>&amp;</text>', '', svg_str)
         svg_str = re.sub(r'<text[^>]*>&</text>', '', svg_str)
-        colors = ["#E64B35", "#4DBBD5", "#00A087", "#3C5488", "#F39B7F"]
+        
+        # 2. 为不同的链分配科研配色
+        colors = ["#E64B35", "#4DBBD5", "#00A087", "#3C5488", "#F39B7F", "#7E6148"]
         chain_lengths = [len(seq) for seq in chain_sequences]
         tracker = {"chain_idx": 0, "base_count": 0}
         
-        def color_injector(match):
-            tag = match.group(0)
+        # 新增：用来存储 5' 和 3' 的 SVG 标签，等下统一注入
+        end_labels = []
+        
+        def color_and_label_injector(match):
+            tag = match.group(0) # 获取整个 <text ...>A</text> 标签
             curr_chain = tracker["chain_idx"]
             color = colors[curr_chain % len(colors)]
+            
+            # 提取当前碱基的 X 和 Y 坐标
+            x_match = re.search(r'x="([-\d\.]+)"', tag)
+            y_match = re.search(r'y="([-\d\.]+)"', tag)
+            
+            if x_match and y_match:
+                x = float(x_match.group(1))
+                y = float(y_match.group(1))
+                
+                # 如果是这条链的【第一个碱基】(5' 端)
+                if tracker["base_count"] == 0:
+                    # 在它左上角偏移一点的位置，画一个 5'
+                    end_labels.append(f"<text x='{x-12}' y='{y-12}' fill='{color}' font-size='12' font-weight='bold' font-family='Arial'>5'</text>")
+                
+                # 如果是这条链的【最后一个碱基】(3' 端)
+                if tracker["base_count"] == chain_lengths[curr_chain] - 1:
+                    # 在它右下角偏移一点的位置，画一个 3'
+                    end_labels.append(f"<text x='{x+12}' y='{y+12}' fill='{color}' font-size='12' font-weight='bold' font-family='Arial'>3'</text>")
+            
             tracker["base_count"] += 1
+            # 链切换逻辑
             if tracker["base_count"] >= chain_lengths[curr_chain]:
                 tracker["chain_idx"] += 1
                 tracker["base_count"] = 0
+                
             return tag.replace("<text ", f"<text fill='{color}' font-weight='bold' ")
             
-        return re.sub(r'<text[^>]*>[A-Za-z]</text>', color_injector, svg_str)
+        # 第一步：替换碱基颜色，并收集 5'/3' 坐标
+        modified_svg = re.sub(r'<text[^>]*>[A-Za-z]</text>', color_and_label_injector, svg_str)
+        
+        # 第二步：将收集到的 5' 和 3' 标记，在 SVG 结束前强行插入进去
+        if end_labels:
+            labels_str = "\n".join(end_labels)
+            modified_svg = modified_svg.replace("</svg>", f"{labels_str}\n</svg>")
+            
+        return modified_svg
+
 
     # 🌟 核心修复 1：定义绝对唯一的“主数据源 (Master Data)”
     if 'master_df' not in st.session_state:
