@@ -99,7 +99,7 @@ with tab2:
     if not nupack_available:
         st.warning(" 检测到当前环境未安装 NUPACK。部署到云端后将自动激活。")
 
-def polish_svg(svg_str, chain_sequences):
+    def polish_svg(svg_str, chain_sequences):
         # 1. 抹除画蛇添足的 '&' 符号
         svg_str = re.sub(r'<text[^>]*>&amp;</text>', '', svg_str)
         svg_str = re.sub(r'<text[^>]*>&</text>', '', svg_str)
@@ -152,8 +152,6 @@ def polish_svg(svg_str, chain_sequences):
             modified_svg = modified_svg.replace("</svg>", f"{labels_str}\n</svg>")
             
         return modified_svg
-
-
     # 🌟 核心修复 1：定义绝对唯一的“主数据源 (Master Data)”
     if 'master_df' not in st.session_state:
         st.session_state.master_df = pd.DataFrame({
